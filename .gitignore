@@ -1,2 +1,5 @@
-Ignored_Files
-*.swp
+build/
+*.o
+*.out
+*.elf
+*.uf2

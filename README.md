@@ -1,22 +1,83 @@
-# Bare Metal Raspberry PI Pico
- A bare metal C programming environment for the Raspberry Pi Pico with minimal dependences.  This is "true" minimalistic bare metal C with no SDK, CMSIS, or other layers between programmer and the hardware.  Features include a USB CDC serial driver that uses no system RAM (only USB DPRAM) and provides a virtual COM port, header files that provide for standard port naming, and a copy-to-RAM stage 2 bootloader that allows programs to be run directly from RAM for faster performance.  To minimize dependences, the environment also includes python-based tools to checksum the bootloader and create UF2 files.
+# NullOS — RP2040 İçin Modüler Bare-Metal Mikro-Çekirdek
 
-# Motivation
- A software-development kit (SDK) facilitates rapid development and improves portability but adds a layer of abstraction that hides many of the low-level hardware features, which is undesirable for bare-metal embedded systems education.  This environment was developed for use in an embedded systems course at Binghamton University.  
- 
-# Status
- This environment has not yet undergone significant testing but will be updated as bugs are disovered.
- 
-#Accessing Hardware Registers
-A Each peripheral (e.g. UART) and CPU subsystem (e.g. PLL) has an include file (e.g. rp2040/pll.h) that should be included to use the register definitions and field macros.  The register block for a peripheral is overlayed with a struct pointer with the same name as the peripheral.  To access a register, use struct pointer notation. For example, the RP2040 datasheet shows pll_sys has a cs register;this would be accessed using pll_sys->cs.  To use the atomic versions of the registers, append _xor, _set, or _clr to the register name.  The included example should make this clear.
+**NullOS**, Raspberry Pi Pico (RP2040) üzerinde hiçbir harici SDK (`pico-sdk`, `FreeRTOS` vb.) kullanmadan sıfırdan geliştirilmiş, modüler mimariye sahip bare-metal bir işletim sistemi çekirdeğidir.
 
-# Included Examples
- A sample C program to flash the LED on the Pico is provided in the src directory.  To make the UF2, run the command 
+USB CDC sanal seri port (`/dev/ttyACM0`) üzerinden çalışan yerleşik bir **POSIX benzeri kabuğa (`nsh`)**, sanal dosya sistemine (`RAMFS`), çift çekirdek (`SMP Core 1`) desteğine ve **`nul.conf`** tabanlı modül yapılandırma sistemine sahiptir.
 
-LIBS="led.o" make test_led.uf2
+## Temel Özellikler
 
-at the prompt in the top level of the hierarchy (same directory as Makefile).
+- **Modüler Yapılandırma (`nul.conf`):** İstediğiniz sürücü ve alt sistemleri (`=y` / `=n`) açıp kapatabilirsiniz. Derleme sırasında `tools/gen_kconfig.py` otomatik olarak `autoconf.h` ve `kconfig.mk` üreterek yalnızca aktif modülleri derler.
+- **Evrensel Cihaz Sürücü Modeli (`device.h`):** Donanım sürücüleri (`GPIO_0`, `ADC_0`, `PWM_0`, `I2C_0`) çekirdeğe kayıt olur ve çalışma zamanında `device list` komutuyla durumları denetlenebilir.
+- **Çift Çekirdek (`SMP`) Desteği:** RP2040'ın ikinci ARM Cortex-M0+ çekirdeği (`Core 1`) SIO FIFO mailbox üzerinden uyandırılır ve kabuğu dondurmadan arka plan görevlerini yürütür.
+- **Sanal Dosya Sistemi (`RAMFS`):** `/`, `/proc`, `/dev`, `/etc`, `/home` dizin yapısını ve dinamik çekirdek dosyalarını (`/proc/cpuinfo` vb.) destekler.
+- **Düğmesiz Yazılım Güncelleme (`bootsel`):** RP2040 Bootrom API'si sayesinde fiziksel `BOOTSEL` düğmesine basmadan tek komutla yazılım yükleme (`RPI-RP2`) moduna geçer.
 
-A C program to demonstrate USB CDC driver is included.  It echos back characters received on the serial port.  To build the UF2 file, run the command
+## Proje Mimarisi
 
-LIBS="usbcdc.o" make test_usbcdc.uf2
+```text
+├── nul.conf                  # Modül aç/kapa yapılandırma dosyası
+├── Makefile                  # build/ dizini altına izole derleme sistemi
+├── tools/
+│   ├── gen_kconfig.py        # nul.conf -> autoconf.h & kconfig.mk üretici
+│   └── elf2uf2.py            # RP2040 UF2 imaj dönüştürücü
+├── drivers/                  # Düşük seviye USB CDC seri port sürücüsü
+└── src/
+    ├── main.c                # Çekirdek başlatma giriş noktası
+    ├── kernel/               # Zamanlayıcı, Bootrom API, dmesg günlüğü ve cihaz kaydı
+    ├── drivers/              # GPIO, ADC (sıcaklık), PWM ve I2C sürücüleri
+    └── subsys/               # RAMFS dosya sistemi, Core 1 SMP ve POSIX Shell
+```
+
+## Kurulum ve Derleme
+
+### Gereksinimler
+- `arm-none-eabi-gcc` ve `arm-none-eabi-binutils`
+- `python3`
+
+### Derleme ve Karta Yükleme
+```bash
+git clone https://github.com
+cd NullOS
+make
+```
+Derleme tamamlandığında tüm çıktılar `build/` klasöründe oluşturulur (`build/nullos.uf2`).
+
+1. Kartı `BOOTSEL` modunda bilgisayara bağlayın (veya çalışan sistemde `bootsel` komutunu kullanın).
+2. Oluşan `.uf2` dosyasını karta kopyalayın:
+   ```bash
+   cp build/nullos.uf2 /run/media/\$USER/RPI-RP2/ && sync
+   ```
+3. Seri konsola bağlanın:
+   ```bash
+   screen /dev/ttyACM0 115200
+   ```
+
+## `nul.conf` Yapılandırması
+
+Kök dizindeki `nul.conf` dosyasını düzenleyerek aktif modülleri özelleştirebilirsiniz:
+
+```ini
+CONFIG_GPIO=y
+CONFIG_ADC=y
+CONFIG_PWM=y
+CONFIG_I2C=y
+CONFIG_SMP=y
+CONFIG_RAMFS=y
+CONFIG_BOOTSEL_CMD=y
+```
+
+## Yerleşik Kabuk (`nsh`) Komutları
+
+| Kategori | Komut | Açıklama |
+| :--- | :--- | :--- |
+| **Sistem** | `help`, `uname`, `uptime`, `dmesg` | Çekirdek sürümü, çalışma süresi ve açılış günlüğü |
+| **Cihazlar** | `device list` | Aktif donanım sürücülerini ve `READY` durumlarını listeler |
+| **Donanım** | `gpio <pin> <on\|off\|toggle\|read>` | 30 GPIO pinini canlı kontrol eder |
+| **Sensör & Sinyal** | `adc temp`, `pwm <pin> <0-100>`, `i2c scan` | Çip sıcaklığını ölçer, PWM üretir ve I2C veri yolunu tarar |
+| **Çoklu Çekirdek** | `core1 <idle\|heartbeat\|stress\|stat>` | 2. çekirdeğin çalışma modunu ve döngü sayacını yönetir |
+| **Dosya Sistemi** | `ls`, `cd`, `pwd`, `mkdir`, `write`, `cat`, `rm` | Sanal `RAMFS` üzerinde dosya ve dizin işlemleri yapar |
+| **Bellek & Güç** | `peek <hex>`, `poke <hex> <val>`, `reboot`, `bootsel` | Doğrudan register erişimi ve yeniden başlatma |
+
+## Lisans ve Atıf
+
+Bu proje, Douglas H. Summerville tarafından geliştirilen [Bare-Metal-Raspberry-PI-Pico](https://github.com) donanım başlatma ve USB CDC altyapısı üzerine inşa edilmiştir ve **MIT Lisansı** altında dağıtılmaktadır.
