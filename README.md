@@ -36,7 +36,7 @@ USB CDC sanal seri port (`/dev/ttyACM0`) üzerinden çalışan yerleşik bir **P
 
 ### Derleme ve Karta Yükleme
 ```bash
-git clone https://github.com
+git clone https://github.com/eneskocaboga5-byte/NullOs-Turkiye
 cd NullOS
 make
 ```
