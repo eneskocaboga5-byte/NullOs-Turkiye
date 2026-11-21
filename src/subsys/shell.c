@@ -141,6 +141,8 @@ static void exec_cmd(char *line) {
 #endif
 #ifdef CONFIG_SMP
     } else if (k_strcmp(a0, "core1") == 0 && argc > 1) {
+        static bool smp_started = false;
+        if (!smp_started) { smp_init(); smp_started = true; }
         if (k_strcmp(a1, "idle") == 0) smp_set_mode(0);
         else if (k_strcmp(a1, "heartbeat") == 0) smp_set_mode(1);
         else if (k_strcmp(a1, "stress") == 0) smp_set_mode(2);

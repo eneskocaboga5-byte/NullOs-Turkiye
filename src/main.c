@@ -9,6 +9,9 @@ extern void pwm_register_driver(void);
 extern void i2c_register_driver(void);
 
 int main(void) {
+    // 1. Ilk is USB CDC seri portu baslat (boot garantisi)
+    configure_usbcdc();
+
     k_log("KERNEL", "NullOS v0.3 baslatiliyor...");
 #ifdef CONFIG_GPIO
     gpio_register_driver();
@@ -25,10 +28,7 @@ int main(void) {
 #ifdef CONFIG_RAMFS
     fs_init();
 #endif
-#ifdef CONFIG_SMP
-    smp_init();
-#endif
-    configure_usbcdc();
+
     shell_run();
     return 0;
 }
